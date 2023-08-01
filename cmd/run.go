@@ -175,18 +175,22 @@ func newRunCommand() *cobra.Command {
 					return nil
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-						result, err := runImageUpdater(cfg, false)
-						if err != nil {
-							log.Errorf("Error: %v", err)
-						} else {
-							log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
-								result.NumApplicationsProcessed,
-								result.NumImagesConsidered,
-								result.NumSkipped,
-								result.NumImagesUpdated,
-								result.NumErrors)
+						for appNamespace := range strings.Split(cfg.AppNamespaces, ",") {
+
+							result, err := runImageUpdater(cfg, false)
+							if err != nil {
+								log.Errorf("Error: %v", err)
+							} else {
+								log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
+									result.NumApplicationsProcessed,
+									result.NumImagesConsidered,
+									result.NumSkipped,
+									result.NumImagesUpdated,
+									result.NumErrors)
+							}
+							lastRun = time.Now()
 						}
-						lastRun = time.Now()
+
 					}
 				}
 				if cfg.CheckInterval == 0 {
@@ -216,6 +220,7 @@ func newRunCommand() *cobra.Command {
 	runCmd.Flags().BoolVar(&disableKubernetes, "disable-kubernetes", false, "do not create and use a Kubernetes client")
 	runCmd.Flags().IntVar(&cfg.MaxConcurrency, "max-concurrency", 10, "maximum number of update threads to run concurrently")
 	runCmd.Flags().StringVar(&cfg.ArgocdNamespace, "argocd-namespace", "", "namespace where ArgoCD runs in (current namespace by default)")
+	runCmd.Flags().StringVar(&cfg.AppNamespaces, "app-namespaces", "", "CloudTalk's namespaces where applications run")
 	runCmd.Flags().StringSliceVar(&cfg.AppNamePatterns, "match-application-name", nil, "patterns to match application name against")
 	runCmd.Flags().StringVar(&cfg.AppLabel, "match-application-label", "", "label to match application labels against")
 	runCmd.Flags().BoolVar(&warmUpCache, "warmup-cache", true, "whether to perform a cache warm-up on startup")
@@ -230,104 +235,111 @@ func newRunCommand() *cobra.Command {
 // Main loop for argocd-image-controller
 func runImageUpdater(cfg *ImageUpdaterConfig, warmUp bool) (argocd.ImageUpdaterResult, error) {
 	result := argocd.ImageUpdaterResult{}
-	var err error
-	var argoClient argocd.ArgoCD
-	switch cfg.ApplicationsAPIKind {
-	case applicationsAPIKindK8S:
-		argoClient, err = argocd.NewK8SClient(cfg.KubeClient)
-	case applicationsAPIKindArgoCD:
-		argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
-	default:
-		return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", cfg.ApplicationsAPIKind)
-	}
-	if err != nil {
-		return result, err
-	}
-	cfg.ArgoClient = argoClient
 
-	apps, err := cfg.ArgoClient.ListApplications()
-	if err != nil {
-		log.WithContext().
-			AddField("argocd_server", cfg.ClientOpts.ServerAddr).
-			AddField("grpc_web", cfg.ClientOpts.GRPCWeb).
-			AddField("grpc_webroot", cfg.ClientOpts.GRPCWebRootPath).
-			AddField("plaintext", cfg.ClientOpts.Plaintext).
-			AddField("insecure", cfg.ClientOpts.Insecure).
-			Errorf("error while communicating with ArgoCD")
-		return result, err
-	}
+	for _, appNamespace := range strings.Split(cfg.AppNamespaces, ",") {
+		log.Debugf("Running image updater on namespace=%s", appNamespace)
 
-	// Get the list of applications that are allowed for updates, that is, those
-	// applications which have correct annotation.
-	appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns, cfg.AppLabel)
-	if err != nil {
-		return result, err
-	}
+		cfg.KubeClient.AppNamespace = appNamespace
 
-	metrics.Applications().SetNumberOfApplications(len(appList))
+		var err error
+		var argoClient argocd.ArgoCD
+		switch cfg.ApplicationsAPIKind {
+		case applicationsAPIKindK8S:
+			argoClient, err = argocd.NewK8SClient(cfg.KubeClient)
+		case applicationsAPIKindArgoCD:
+			argoClient, err = argocd.NewAPIClient(&cfg.ClientOpts)
+		default:
+			return argocd.ImageUpdaterResult{}, fmt.Errorf("application api '%s' is not supported", cfg.ApplicationsAPIKind)
+		}
+		if err != nil {
+			return result, err
+		}
+		cfg.ArgoClient = argoClient
 
-	if !warmUp {
-		log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
-	}
-
-	syncState := argocd.NewSyncIterationState()
-
-	// Allow a maximum of MaxConcurrency number of goroutines to exist at the
-	// same time. If in warm-up mode, set to 1 explicitly.
-	var concurrency int = cfg.MaxConcurrency
-	if warmUp {
-		concurrency = 1
-	}
-	var dryRun bool = cfg.DryRun
-	if warmUp {
-		dryRun = true
-	}
-	sem := semaphore.NewWeighted(int64(concurrency))
-
-	var wg sync.WaitGroup
-	wg.Add(len(appList))
-
-	for app, curApplication := range appList {
-		lockErr := sem.Acquire(context.TODO(), 1)
-		if lockErr != nil {
-			log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
-			// Release entry in wait group on error, too - we're never gonna execute
-			wg.Done()
-			continue
+		apps, err := cfg.ArgoClient.ListApplications()
+		if err != nil {
+			log.WithContext().
+				AddField("argocd_server", cfg.ClientOpts.ServerAddr).
+				AddField("grpc_web", cfg.ClientOpts.GRPCWeb).
+				AddField("grpc_webroot", cfg.ClientOpts.GRPCWebRootPath).
+				AddField("plaintext", cfg.ClientOpts.Plaintext).
+				AddField("insecure", cfg.ClientOpts.Insecure).
+				Errorf("error while communicating with ArgoCD")
+			return result, err
 		}
 
-		go func(app string, curApplication argocd.ApplicationImages) {
-			defer sem.Release(1)
-			log.Debugf("Processing application %s", app)
-			upconf := &argocd.UpdateConfiguration{
-				NewRegFN:          registry.NewClient,
-				ArgoClient:        cfg.ArgoClient,
-				KubeClient:        cfg.KubeClient,
-				UpdateApp:         &curApplication,
-				DryRun:            dryRun,
-				GitCommitUser:     cfg.GitCommitUser,
-				GitCommitEmail:    cfg.GitCommitMail,
-				GitCommitMessage:  cfg.GitCommitMessage,
-				DisableKubeEvents: cfg.DisableKubeEvents,
+		// Get the list of applications that are allowed for updates, that is, those
+		// applications which have correct annotation.
+		appList, err := argocd.FilterApplicationsForUpdate(apps, cfg.AppNamePatterns, cfg.AppLabel)
+		if err != nil {
+			return result, err
+		}
+
+		metrics.Applications().SetNumberOfApplications(len(appList))
+
+		if !warmUp {
+			log.Infof("Starting image update cycle, considering %d annotated application(s) for update", len(appList))
+		}
+
+		syncState := argocd.NewSyncIterationState()
+
+		// Allow a maximum of MaxConcurrency number of goroutines to exist at the
+		// same time. If in warm-up mode, set to 1 explicitly.
+		var concurrency int = cfg.MaxConcurrency
+		if warmUp {
+			concurrency = 1
+		}
+		var dryRun bool = cfg.DryRun
+		if warmUp {
+			dryRun = true
+		}
+		sem := semaphore.NewWeighted(int64(concurrency))
+
+		var wg sync.WaitGroup
+		wg.Add(len(appList))
+
+		for app, curApplication := range appList {
+			lockErr := sem.Acquire(context.TODO(), 1)
+			if lockErr != nil {
+				log.Errorf("Could not acquire semaphore for application %s: %v", app, lockErr)
+				// Release entry in wait group on error, too - we're never gonna execute
+				wg.Done()
+				continue
 			}
-			res := argocd.UpdateApplication(upconf, syncState)
-			result.NumApplicationsProcessed += 1
-			result.NumErrors += res.NumErrors
-			result.NumImagesConsidered += res.NumImagesConsidered
-			result.NumImagesUpdated += res.NumImagesUpdated
-			result.NumSkipped += res.NumSkipped
-			if !warmUp && !cfg.DryRun {
-				metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
-			}
-			metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
-			metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
-			wg.Done()
-		}(app, curApplication)
+
+			go func(app string, curApplication argocd.ApplicationImages) {
+				defer sem.Release(1)
+				log.Debugf("Processing application %s", app)
+				upconf := &argocd.UpdateConfiguration{
+					NewRegFN:          registry.NewClient,
+					ArgoClient:        cfg.ArgoClient,
+					KubeClient:        cfg.KubeClient,
+					UpdateApp:         &curApplication,
+					DryRun:            dryRun,
+					GitCommitUser:     cfg.GitCommitUser,
+					GitCommitEmail:    cfg.GitCommitMail,
+					GitCommitMessage:  cfg.GitCommitMessage,
+					DisableKubeEvents: cfg.DisableKubeEvents,
+				}
+				res := argocd.UpdateApplication(upconf, syncState)
+				result.NumApplicationsProcessed += 1
+				result.NumErrors += res.NumErrors
+				result.NumImagesConsidered += res.NumImagesConsidered
+				result.NumImagesUpdated += res.NumImagesUpdated
+				result.NumSkipped += res.NumSkipped
+				if !warmUp && !cfg.DryRun {
+					metrics.Applications().IncreaseImageUpdate(app, res.NumImagesUpdated)
+				}
+				metrics.Applications().IncreaseUpdateErrors(app, res.NumErrors)
+				metrics.Applications().SetNumberOfImagesWatched(app, res.NumImagesConsidered)
+				wg.Done()
+			}(app, curApplication)
+		}
+
+		// Wait for all goroutines to finish
+		wg.Wait()
+
 	}
-
-	// Wait for all goroutines to finish
-	wg.Wait()
-
 	return result, nil
 }
 

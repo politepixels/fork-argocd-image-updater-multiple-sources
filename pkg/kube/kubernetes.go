@@ -24,6 +24,7 @@ type KubernetesClient struct {
 	ApplicationsClientset versioned.Interface
 	Context               context.Context
 	Namespace             string
+	AppNamespace          string
 }
 
 func NewKubernetesClient(ctx context.Context, client kubernetes.Interface, applicationsClientset versioned.Interface, namespace string) *KubernetesClient {
