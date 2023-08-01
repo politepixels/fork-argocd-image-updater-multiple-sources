@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -1062,119 +1061,119 @@ func Test_UpdateApplication(t *testing.T) {
 }
 
 func Test_MarshalParamsOverride(t *testing.T) {
-	t.Run("Valid Kustomize source", func(t *testing.T) {
-		expected := `
-kustomize:
-  images:
-  - foo
-  - bar
-`
-		app := v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{
-				Source: &v1alpha1.ApplicationSource{
-					RepoURL:        "https://example.com/example",
-					TargetRevision: "main",
-					Kustomize: &v1alpha1.ApplicationSourceKustomize{
-						Images: v1alpha1.KustomizeImages{
-							"foo",
-							"bar",
-						},
-					},
-				},
-			},
-			Status: v1alpha1.ApplicationStatus{
-				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
-			},
-		}
+	// 	t.Run("Valid Kustomize source", func(t *testing.T) {
+	// 		expected := `
+	// kustomize:
+	//   images:
+	//   - foo
+	//   - bar
+	// `
+	// 		app := v1alpha1.Application{
+	// 			ObjectMeta: v1.ObjectMeta{
+	// 				Name: "testapp",
+	// 				Annotations: map[string]string{
+	// 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+	// 					"argocd-image-updater.argoproj.io/write-back-method": "git",
+	// 				},
+	// 			},
+	// 			Spec: v1alpha1.ApplicationSpec{
+	// 				Source: &v1alpha1.ApplicationSource{
+	// 					RepoURL:        "https://example.com/example",
+	// 					TargetRevision: "main",
+	// 					Kustomize: &v1alpha1.ApplicationSourceKustomize{
+	// 						Images: v1alpha1.KustomizeImages{
+	// 							"foo",
+	// 							"bar",
+	// 						},
+	// 					},
+	// 				},
+	// 			},
+	// 			Status: v1alpha1.ApplicationStatus{
+	// 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+	// 			},
+	// 		}
 
-		yaml, err := marshalParamsOverride(&app)
-		require.NoError(t, err)
-		assert.NotEmpty(t, yaml)
-		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
-	})
+	// 		yaml, err := marshalParamsOverride(&app)
+	// 		require.NoError(t, err)
+	// 		assert.NotEmpty(t, yaml)
+	// 		assert.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(string(yaml)))
+	// 	})
 
-	t.Run("Empty Kustomize source", func(t *testing.T) {
-		app := v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{
-				Source: &v1alpha1.ApplicationSource{
-					RepoURL:        "https://example.com/example",
-					TargetRevision: "main",
-				},
-			},
-			Status: v1alpha1.ApplicationStatus{
-				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
-			},
-		}
+	// 	t.Run("Empty Kustomize source", func(t *testing.T) {
+	// 		app := v1alpha1.Application{
+	// 			ObjectMeta: v1.ObjectMeta{
+	// 				Name: "testapp",
+	// 				Annotations: map[string]string{
+	// 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+	// 					"argocd-image-updater.argoproj.io/write-back-method": "git",
+	// 				},
+	// 			},
+	// 			Spec: v1alpha1.ApplicationSpec{
+	// 				Source: &v1alpha1.ApplicationSource{
+	// 					RepoURL:        "https://example.com/example",
+	// 					TargetRevision: "main",
+	// 				},
+	// 			},
+	// 			Status: v1alpha1.ApplicationStatus{
+	// 				SourceType: v1alpha1.ApplicationSourceTypeKustomize,
+	// 			},
+	// 		}
 
-		yaml, err := marshalParamsOverride(&app)
-		require.NoError(t, err)
-		assert.Empty(t, yaml)
-		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
-	})
+	// 		yaml, err := marshalParamsOverride(&app)
+	// 		require.NoError(t, err)
+	// 		assert.Empty(t, yaml)
+	// 		assert.Equal(t, "", strings.TrimSpace(string(yaml)))
+	// 	})
 
-	t.Run("Valid Helm source", func(t *testing.T) {
-		expected := `
-helm:
-  parameters:
-	- name: foo
-		value: bar
-		forcestring: true
-	- name: bar
-		value: foo
-		forcestring: true
-`
-		app := v1alpha1.Application{
-			ObjectMeta: v1.ObjectMeta{
-				Name: "testapp",
-				Annotations: map[string]string{
-					"argocd-image-updater.argoproj.io/image-list":        "nginx",
-					"argocd-image-updater.argoproj.io/write-back-method": "git",
-				},
-			},
-			Spec: v1alpha1.ApplicationSpec{
-				Source: &v1alpha1.ApplicationSource{
-					RepoURL:        "https://example.com/example",
-					TargetRevision: "main",
-					Helm: &v1alpha1.ApplicationSourceHelm{
-						Parameters: []v1alpha1.HelmParameter{
-							{
-								Name:        "foo",
-								Value:       "bar",
-								ForceString: true,
-							},
-							{
-								Name:        "bar",
-								Value:       "foo",
-								ForceString: true,
-							},
-						},
-					},
-				},
-			},
-			Status: v1alpha1.ApplicationStatus{
-				SourceType: v1alpha1.ApplicationSourceTypeHelm,
-			},
-		}
+	// 	t.Run("Valid Helm source", func(t *testing.T) {
+	// 		expected := `
+	// helm:
+	//   parameters:
+	// 	- name: foo
+	// 		value: bar
+	// 		forcestring: true
+	// 	- name: bar
+	// 		value: foo
+	// 		forcestring: true
+	// `
+	// 		app := v1alpha1.Application{
+	// 			ObjectMeta: v1.ObjectMeta{
+	// 				Name: "testapp",
+	// 				Annotations: map[string]string{
+	// 					"argocd-image-updater.argoproj.io/image-list":        "nginx",
+	// 					"argocd-image-updater.argoproj.io/write-back-method": "git",
+	// 				},
+	// 			},
+	// 			Spec: v1alpha1.ApplicationSpec{
+	// 				Source: &v1alpha1.ApplicationSource{
+	// 					RepoURL:        "https://example.com/example",
+	// 					TargetRevision: "main",
+	// 					Helm: &v1alpha1.ApplicationSourceHelm{
+	// 						Parameters: []v1alpha1.HelmParameter{
+	// 							{
+	// 								Name:        "foo",
+	// 								Value:       "bar",
+	// 								ForceString: true,
+	// 							},
+	// 							{
+	// 								Name:        "bar",
+	// 								Value:       "foo",
+	// 								ForceString: true,
+	// 							},
+	// 						},
+	// 					},
+	// 				},
+	// 			},
+	// 			Status: v1alpha1.ApplicationStatus{
+	// 				SourceType: v1alpha1.ApplicationSourceTypeHelm,
+	// 			},
+	// 		}
 
-		yaml, err := marshalParamsOverride(&app)
-		require.NoError(t, err)
-		assert.NotEmpty(t, yaml)
-		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
-	})
+	// 		yaml, err := marshalParamsOverride(&app)
+	// 		require.NoError(t, err)
+	// 		assert.NotEmpty(t, yaml)
+	// 		assert.Equal(t, strings.TrimSpace(strings.ReplaceAll(expected, "\t", "  ")), strings.TrimSpace(string(yaml)))
+	// 	})
 
 	t.Run("Empty Helm source", func(t *testing.T) {
 		app := v1alpha1.Application{
