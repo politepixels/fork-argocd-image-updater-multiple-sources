@@ -175,22 +175,18 @@ func newRunCommand() *cobra.Command {
 					return nil
 				default:
 					if lastRun.IsZero() || time.Since(lastRun) > cfg.CheckInterval {
-						for appNamespace := range strings.Split(cfg.AppNamespaces, ",") {
-
-							result, err := runImageUpdater(cfg, false)
-							if err != nil {
-								log.Errorf("Error: %v", err)
-							} else {
-								log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
-									result.NumApplicationsProcessed,
-									result.NumImagesConsidered,
-									result.NumSkipped,
-									result.NumImagesUpdated,
-									result.NumErrors)
-							}
-							lastRun = time.Now()
+						result, err := runImageUpdater(cfg, false)
+						if err != nil {
+							log.Errorf("Error: %v", err)
+						} else {
+							log.Infof("Processing results: applications=%d images_considered=%d images_skipped=%d images_updated=%d errors=%d",
+								result.NumApplicationsProcessed,
+								result.NumImagesConsidered,
+								result.NumSkipped,
+								result.NumImagesUpdated,
+								result.NumErrors)
 						}
-
+						lastRun = time.Now()
 					}
 				}
 				if cfg.CheckInterval == 0 {
