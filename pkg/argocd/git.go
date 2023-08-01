@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
