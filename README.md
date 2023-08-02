@@ -6,6 +6,7 @@
 # + https://github.com/argoproj-labs/argocd-image-updater/pull/424 + rework for multiple sources
 # + https://github.com/argoproj-labs/argocd-image-updater/pull/578
 # + .argocd-source-<appNAME>.yaml structure - values format, passed as value file to overwrite repository and tag based on annotations
+# + allow passing extraArgs --app-namespaces to define namespaces to be scanned for apps
 #
 ####
 
