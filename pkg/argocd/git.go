@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"gopkg.in/yaml.v2"
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
 	kyaml "sigs.k8s.io/kustomize/kyaml/yaml"
@@ -260,11 +259,7 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		}
 	}
 
-	mapParams, err := marshalParamsOverride(app)
-	if err != nil {
-		return
-	}
-	override, err := yaml.Marshal(mapParams)
+	override, err := marshalParamsOverride(app)
 	if err != nil {
 		return
 	}
@@ -280,23 +275,6 @@ func writeOverrides(app *v1alpha1.Application, wbc *WriteBackConfig, gitC git.Cl
 		if string(data) == string(override) {
 			logCtx.Debugf("target parameter file and marshaled data are the same, skipping commit.")
 			return nil, true
-		}
-		// exists but it's not the same
-		var existingMapParams map[string]any
-		err = yaml.Unmarshal(data, &existingMapParams)
-		if err != nil {
-			return err, false
-		}
-
-		images := existingMapParams["image"].(map[string]any)
-
-		for k, v := range mapParams["image"].(map[string]any) {
-			images[k] = v
-		}
-		// use updated file
-		override, err = yaml.Marshal(existingMapParams)
-		if err != nil {
-			return err, false
 		}
 	}
 

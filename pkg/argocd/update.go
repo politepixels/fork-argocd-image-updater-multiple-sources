@@ -19,6 +19,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"gopkg.in/yaml.v2"
 )
 
 // Stores some statistics about the results of a run
@@ -375,35 +376,35 @@ func setAppImage(app *v1alpha1.Application, img *image.ContainerImage) error {
 
 // marshalParamsOverride marshals the parameter overrides of a given application
 // into YAML bytes
-func marshalParamsOverride(app *v1alpha1.Application) (map[string]any, error) {
-	var mapParams map[string]any
+func marshalParamsOverride(app *v1alpha1.Application) ([]byte, error) {
+	var override []byte
 	var err error
 
 	appType := GetApplicationType(app)
 	switch appType {
-	// case ApplicationTypeKustomize:
-	// 	if app.Spec.GetSource().Kustomize == nil {
-	// 		return nil, nil
-	// 	}
-	// 	params := kustomizeOverride{
-	// 		Kustomize: kustomizeImages{
-	// 			Images: &app.Spec.GetSource().Kustomize.Images,
-	// 		},
-	// 	}
-	// 	override, err = yaml.Marshal(params)
+	case ApplicationTypeKustomize:
+		if app.Spec.GetSource().Kustomize == nil {
+			return []byte{}, nil
+		}
+		params := kustomizeOverride{
+			Kustomize: kustomizeImages{
+				Images: &app.Spec.GetSource().Kustomize.Images,
+			},
+		}
+		override, err = yaml.Marshal(params)
 	case ApplicationTypeHelm:
 		if app.Spec.GetSource().Helm == nil {
-			return nil, nil
+			return []byte{}, nil
 		}
 
-		mapParams = createNestedMap(app.Spec.GetSource().Helm.Parameters)
+		mapParams := createNestedMap(app.Spec.GetSource().Helm.Parameters)
 
 		// params := helmOverride{
 		// 	Helm: helmParameters{
 		// 		Parameters: app.Spec.GetSource().Helm.Parameters,
 		// 	},
 		// }
-
+		override, err = yaml.Marshal(mapParams)
 	default:
 		err = fmt.Errorf("unsupported application type")
 	}
@@ -411,7 +412,7 @@ func marshalParamsOverride(app *v1alpha1.Application) (map[string]any, error) {
 		return nil, err
 	}
 
-	return mapParams, nil
+	return override, nil
 }
 
 func createNestedMap(keyValues []v1alpha1.HelmParameter) map[string]any {
